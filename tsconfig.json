@@ -5,5 +5,5 @@
     },
     "include": [
         "./src/**/*"
-    ]
+, "dist/assets/editor.js"    ]
 }

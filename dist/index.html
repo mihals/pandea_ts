@@ -2,8 +2,39 @@
 <html>
   <head>
     <meta charset="utf-8">
+    <link href="styles.css" rel="stylesheet">
     <script src="game.js"></script>
   </head>
   <body>
+    <div class="flexContainer">
+      <div id="gameContainer"></div>
+      <div class="gameEditor">
+        <div class="activeTool">
+          <span >Выбрано</span><img id="selectedTool" src="assets/none.png">
+        </div>
+        <div>
+          <table id="toolsTable">
+            <tr>
+              <td id="virOnTd"><img src="assets/virOn.png"></td>
+              <td id="walkOnTd"><img src="assets/walkOn.png"></td>
+              <td id="noneTd"><img src="assets/none.png"></td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.myEditor = null;
+      async function loadEditor(){
+        let obj = await import("/assets/editor.js")//.default
+        let defObj = obj.default
+        window.myEditor = new defObj()
+        document.getElementById("virOnTd").addEventListener("click",window.myEditor)
+        document.getElementById("walkOnTd").addEventListener("click",window.myEditor)
+        document.getElementById("noneTd").addEventListener("click",window.myEditor)
+        let a = window.MyGame.scene
+      }
+      loadEditor()
+    </script>
   </body>
 </html>

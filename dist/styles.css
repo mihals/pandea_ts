@@ -1,0 +1,4 @@
+.flexContainer {display: flex;}
+.gameEditor {display: flex; flex-direction: column;  }
+.activeTool {display: flex; justify-content: space-evenly; align-items: center;}
+.gameEditor div {padding-top: 10px;}
