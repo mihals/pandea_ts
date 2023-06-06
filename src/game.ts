@@ -23,6 +23,11 @@ export default class Demo extends Phaser.Scene
      */
     walkGridArr:Phaser.GameObjects.Grid[]
     /**
+     * массив контактных групп, каждая контактная группа - это набор волкеров,
+     * которые инфицируются при заражении хотя бы одного из волкеров группы
+     */
+    contactGroupArr:Phaser.Structs.Set<{ x:number,y:number}>[] 
+    /**
      * Шаблонный размер для каждой сетки
      */
     gridRect:Phaser.Geom.Rectangle
@@ -55,6 +60,14 @@ export default class Demo extends Phaser.Scene
      */
     keys:any
     /**
+     * количество клеток, которое отмотала сетка вирусов
+     */
+    numVirCells:number
+    /**
+     * количество клеток, которое отмотала сетка волкеров
+     */
+    numWalkCells:number
+    /**
      * y-координата самой нижней точки самой нижней сетки редактора, 
      * перемещается вместе с перемещением сетки
      */
@@ -78,21 +91,23 @@ export default class Demo extends Phaser.Scene
         this.gridCellHeight = Math.round(this.gridRect.height/this.cellSize)
         this.virGridArr = []
         this.walkGridArr = []
+        this.contactGroupArr=[]
+        //this.testSet()
     }    
 
     preload ()
     {
-        this.load.image('logo', 'assets/phaser3-logo.png');
+        //this.load.image('logo', 'assets/phaser3-logo.png');
         this.load.image('none', 'assets/none.png');
         this.load.image('virOn', 'assets/virOn.png');
-        this.load.image('virOff', 'assets/virOff.png');
+        //this.load.image('virOff', 'assets/virOff.png');
         this.load.image('walkOn', 'assets/walkOn.png');
-        this.load.image('walkOff', 'assets/walkOff.png');
+        //this.load.image('walkOff', 'assets/walkOff.png');
     }
 
     create ()
     {
-        const logo = this.add.image(400, 70, 'logo');
+        //const logo = this.add.image(400, 70, 'logo');
 
         this.walkGridArr.push(this.add.grid(100, -100, this.gridRect.width,
             this.gridRect.height, this.cellSize, this.cellSize, undefined, undefined,
@@ -105,6 +120,8 @@ export default class Demo extends Phaser.Scene
         this.editZone.name = "editZone"
         this.input.on('gameobjectdown', this.onZoneClick, this);
         this.keys = this.input.keyboard.addKeys('Q, A');
+        this.numVirCells = 0 
+        this.numWalkCells =0 
     }
 
     update(time: number, delta: number): void {
@@ -116,6 +133,23 @@ export default class Demo extends Phaser.Scene
             this.input.keyboard.on('keydown-Q', this.keyQDown)
             this.isEditorInit =true
         }
+
+        let newNumVirCells = Math.floor(this.virGridArr[0].y-
+            this.game.canvas.height)/this.cellSize
+        // если сетка вирусов прокрутилась на ячейку, то перс мог столкнуться
+        // с вирусом
+        if (newNumVirCells != this.numVirCells) {
+
+        }
+
+        let newNumWalkCells = Math.floor(this.walkGridArr[0].y-
+            this.game.canvas.height)/this.cellSize
+        // если сетка волкеров прокрутилась на ячейку, то перс мог столкнуться
+        // с волкером
+        if (newNumWalkCells != this.numWalkCells) {
+
+        }
+
         if(this.keys.A.isDown) this.moveUnits(delta*this.velocity/1000)
         if(this.keys.Q.isDown) this.moveUnits(-delta*this.velocity/1000) 
     }
@@ -148,6 +182,13 @@ export default class Demo extends Phaser.Scene
                 this.virGroup.remove(virArr[0], true)
                 return
             }
+            // если на месте, где щёлкнули в режиме virOn уже находится
+            // волкер, то удаляем его и выходим
+            let walkArr = this.walkGroup.getMatching("name", "W_" + xCell + "_" +globalCellY)
+            if (walkArr.length != 0) {
+                this.walkGroup.remove(walkArr[0], true)
+                return
+            }
 
             this.virGroup.create(this.gridRect.left + xCell * this.cellSize +
                 Math.round(this.cellSize / 2), this.virGridArr[0].getBounds().bottom -
@@ -155,7 +196,8 @@ export default class Demo extends Phaser.Scene
                 this.editorPnt.buttonState).setDisplaySize(48, 48).setName(virName).
                 setData({
                     "type": "V", "X": xCell * 50 + 25,
-                    "Y": globalCellY
+                    "Y": globalCellY * 50 + 25,
+                    "xCell" : xCell, "yCell" : globalCellY
                 })
         }
 
@@ -170,15 +212,23 @@ export default class Demo extends Phaser.Scene
             // (grid.getBounds().bottom -pointer.y) - расстояние от нижнего края сетки,
             // в которую попал юнит, к нему надо добавить высоту всех нижележащих сеток
             // чтобы получить globalCellY
-            let globalCellY = Math.floor((grid.getBounds().bottom - pointer.y) / this.cellSize) +
-                grid.getData("index") * this.gridCellHeight
+            let globalCellY = Math.floor((grid.getBounds().bottom - pointer.y) / 
+                this.cellSize) + grid.getData("index") * this.gridCellHeight
             // В имени зашифрованы координаты в ячейках
             let walkName = "W_" + xCell + "_" + globalCellY
             // если на месте, где щёлкнули в режиме  walkOn уже находится
-            // волкер, то удаляем его и выходим
+            // волкер, то удаляем его из группы, пересчитываем контакты и выходим
             let walkArr = this.walkGroup.getMatching("name", walkName)
             if (walkArr.length != 0) {
                 this.walkGroup.remove(walkArr[0], true)
+                this.removeContactWalker(xCell,globalCellY)
+                return
+            }
+            // если на месте, где щёлкнули в режиме walkOn уже находится
+            // вирус , то удаляем его и выходим
+            let virArr = this.virGroup.getMatching("name", "V_" + xCell + "_" + globalCellY)
+            if (virArr.length != 0) {
+                this.virGroup.remove(virArr[0], true)
                 return
             }
 
@@ -188,8 +238,10 @@ export default class Demo extends Phaser.Scene
                 this.editorPnt.buttonState).setDisplaySize(48, 48).setName(walkName).
                 setData({
                     "type": "W", "X": xCell * 50 + 25,
-                    "Y": globalCellY
+                    "Y": globalCellY * 50 + 25,
+                    "xCell" : xCell, "yCell" : globalCellY
                 })
+            this.addContactWalker(xCell,globalCellY)
         }
     }
 
@@ -246,7 +298,193 @@ export default class Demo extends Phaser.Scene
                 this.gridRect.height, this.cellSize, this.cellSize, undefined, undefined,
                 0xff0000).setOrigin(0, 0).setData({ "index": numNextGrid }).setDepth(1))
         }
+    }
+
+    /**
+     * добавляет в сформированные массивы контактных групп, где
+     * каждая группа - это волкеры, все из которых инфицируются при заражении
+     * одного из волкеров группы, нового волкера с номерами ячейки x и y 
+     */
+    addContactWalker(x:number,y:number){
+        if(this.contactGroupArr.length == 0){
+            this.contactGroupArr.push(new Phaser.Structs.Set([{x,y}]))
+            return
+        }
+        // в массиве наборов контактных групп проверяем находится ли по
+        // соседству с добавляемым волкером другой волкер - тогда они
+        // в одной контактной группе. Индексы групп, для которых данный
+        // волкер оказался контактным, заносим в массив
+        let contactIndArr:Array<number> =[]
+
+        for (let i = 0; i < this.contactGroupArr.length; i++) {
+            // проверяем все девять соседних ячейки на наличие там другого волкера
+            // из набора this.contactGroupArr[i]
+            this.contactGroupArr[i].iterate((entry) => {
+                if (((x == entry.x) && (y == entry.y - 1)) ||
+                    ((x == entry.x - 1) && (y == entry.y - 1)) ||
+                    ((x == entry.x - 1) && (y == entry.y)) ||
+                    ((x == entry.x - 1) && (y == entry.y + 1)) ||
+                    ((x == entry.x) && (y == entry.y + 1)) ||
+                    ((x == entry.x + 1) && (y == entry.y + 1)) ||
+                    ((x == entry.x + 1) && (y == entry.y)) ||
+                    ((x == entry.x + 1) && (y == entry.y - 1))) {
+                    contactIndArr.push(i)
+                    return false
+                }
+            })
+        }
+        // если контактных наборов не найдено, значит добавленный волкер
+        // образует новую группу
+        if(contactIndArr.length==0){
+            this.contactGroupArr.push(new Phaser.Structs.Set([{x,y}]))
+            return
+        }
+        // если волкер контактирует лишь с одной группой, добавляем его
+        // в этот набор
+        if(contactIndArr.length==1){
+            this.contactGroupArr[contactIndArr[0]].set({x,y})
+            return
+        }
+        // если добавленный волкер контактирует с несколькими группами,
+        // то они все объединяются в одну контактную группу.
+        // В contactIndArr находятся индексы, по которым в массиве contactGroupArr
+        // располагаются наборы, с которыми контактирует добавляемый волкер,
+        // все эти наборы объединяем в один набор с наименьшим индексом,
+        // равным contactIndArr[0]
+        if (contactIndArr.length > 1) {
+            for (let i = 1; i < contactIndArr.length; i++) {
+                this.contactGroupArr[contactIndArr[0]] =
+                    this.contactGroupArr[contactIndArr[0]].union(
+                        this.contactGroupArr[contactIndArr[i]]
+                    )
+                // вместо добавленных в общую группу наборов вставляем null
+                this.contactGroupArr.splice(contactIndArr[i],1,null)
+            }
+            // добавляем и сам новый волкер
+            this.contactGroupArr[contactIndArr[0]].set({x,y})
+            // фильтруем contactGroupArr, чтобы избавиться от ячеек с null
+            let tmpArr = this.contactGroupArr.filter((elem) =>{
+                if(elem === null) return false
+                return true
+            })
+            this.contactGroupArr = tmpArr
+        }
+    }
+    /**
+     * Удаляет волкера с номерами ячейки x и y из контактных групп,
+     * из this.walkGroup волкер уже удалён
+     */
+    // при удалении волкера, входящего в какую-либо контактную группу,
+    // сама группа может распасться на несколько контактных групп
+    removeContactWalker(x:number, y:number){
+        //console.log(x+y)
+        //alert(x)
+        // ищем контактную группу, в которую входит волкер с такими
+        // координатами, индекс, по которому находится набор с этим
+        // волкером заносим в ind 
+        let ind:number
+        for(let i=0; i< this.contactGroupArr.length; i++){
+            this.contactGroupArr[i].iterate((entry)=>{
+                if((entry.x == x)&&(entry.y == y)){
+                    ind = i
+                    return false
+                }
+            })
+        }
+
+        // удаляем волкер
+        this.contactGroupArr[ind].each((entry) => {
+            if((entry.x == x)&&(entry.y==y)){
+                this.contactGroupArr[ind].delete(entry)
+                return false
+            }})
         
+        // если волкер был единственным в контактной группе, удаляем
+        // всю группу
+        if(this.contactGroupArr[ind].size == 0){
+            this.contactGroupArr.splice(ind,1)
+            return
+        }
+        // если остался один волкер, то он один и образует контактную группу
+        if(this.contactGroupArr[ind].size == 1){
+            return
+        }
+        // если в наборе осталось несколько волкеров, определяем контактные
+        // группы, которые они образуют, для этого создаём временный массив,
+        // содержащий наборы по одному волкеру из contactGroupArr[ind] в каждом
+        let tmpArr: Phaser.Structs.Set<{ x:number,y:number}>[] = [] 
+        // массив волкеров, для каждого из которых будем искать контакты
+        let tmpWalkArr = this.contactGroupArr[ind].getArray() 
+        this.contactGroupArr[ind].iterate((item) => {
+            tmpArr.push((new Phaser.Structs.Set([{'x':item.x, 'y':item.y}])))
+            return true
+        })
+        // в Set не все методы работают с объектами {x,y}, поэтому для начала
+        // преобразуем все координаты в строки вида "x_y"
+        let tmpStrWalkArr:Phaser.Structs.Set<string>[] = []
+        // для единственного волкера в каждом наборе ищем всех контактных с ним
+        // и добавляем к нему в набор
+        for (let i = 0; i < tmpArr.length; i++) {
+            let x = tmpWalkArr[i].x
+            let y = tmpWalkArr[i].y
+            tmpStrWalkArr.push(new Phaser.Structs.Set([x+"_"+y]))
+            for (let j = i + 1; j < tmpArr.length; j++) {
+                if (((x == tmpWalkArr[j].x) && (y == tmpWalkArr[j].y - 1)) ||
+                    ((x == tmpWalkArr[j].x - 1) && (y == tmpWalkArr[j].y - 1)) ||
+                    ((x == tmpWalkArr[j].x - 1) && (y == tmpWalkArr[j].y)) ||
+                    ((x == tmpWalkArr[j].x - 1) && (y == tmpWalkArr[j].y + 1)) ||
+                    ((x == tmpWalkArr[j].x) && (y == tmpWalkArr[j].y + 1)) ||
+                    ((x == tmpWalkArr[j].x + 1) && (y == tmpWalkArr[j].y + 1)) ||
+                    ((x == tmpWalkArr[j].x + 1) && (y == tmpWalkArr[j].y)) ||
+                    ((x == tmpWalkArr[j].x + 1) && (y == tmpWalkArr[j].y - 1))) {
+                    tmpArr[i].set({ 'x': tmpWalkArr[j].x, 'y': tmpWalkArr[j].y })
+                    tmpStrWalkArr[i].set(tmpWalkArr[j].x + "_" + tmpWalkArr[j].y)
+                }
+            }
+        }
+        // ищем пересечения в наборах в tmpStrWalkArr, т.е. общие для двух
+        // наборов элементы и объединяем наборы, если такие элементы есть
+        // вместо набора, влившегося в другой, вставляем null
+        for (let i = 0; i < tmpStrWalkArr.length; i++) {
+            for (let j = i+1; j < tmpStrWalkArr.length; j++) {
+                if ((tmpStrWalkArr[i] != null) && (tmpStrWalkArr[j] != null) &&
+                    (tmpStrWalkArr[i].intersect(tmpStrWalkArr[j]).size!=0)) {
+                        let a = tmpStrWalkArr[i].intersect(tmpStrWalkArr[j])
+                        console.log(a)
+                    tmpStrWalkArr[i] = tmpStrWalkArr[i].union(tmpStrWalkArr[j])
+                    tmpStrWalkArr[j] = null
+                }
+            }
+        }
+        // удаляем предыдущий набор из contactGroupArr
+        this.contactGroupArr.splice(ind,1)
+        // вставляем образовавшиеся после удаления волкера наборы в contactGroupArr
+        for(let i=0; i<tmpStrWalkArr.length; i++){
+            if(tmpStrWalkArr[i]!=null){
+                this.contactGroupArr.push(new Phaser.Structs.Set([]))
+                tmpStrWalkArr[i].iterate((entry) => {
+                    const coord: string[] = entry.split("_")
+                    this.contactGroupArr[this.contactGroupArr.length-1].set(
+                        {'x':Number(coord[0]),'y': Number(coord[1])}
+                    )
+                    return true
+                })
+            }
+        }
+    }
+
+    testSet(){
+        let set1:Phaser.Structs.Set<string>=new Phaser.Structs.Set(["1_1","1_2","1_3"])
+        let set2:Phaser.Structs.Set<string>=new Phaser.Structs.Set(["1_3","1_4","1_5"])
+        set2.delete("1_5")
+        let a=set2.contains("1_3")
+        console.log(a)
+        let resSet = set2.difference(set1)
+        console.log(resSet)
+        let uniSet = set1.union(set2)
+        console.log(uniSet)
+        uniSet=set1.intersect(set2)
+        console.log(uniSet)
     }
 
     keyQDown(pointer: Phaser.Input.Pointer){

@@ -32,6 +32,10 @@ class Editor{
                 document.getElementById("selectedTool").src = "assets/none.png"
                 this.buttonState = "none"
                 break;
+            case 'moveOn':
+                document.getElementById("selectedTool").src = "assets/moveOn.png"
+                this.buttonState = "moveOn"
+                break;
         }
     }
 
