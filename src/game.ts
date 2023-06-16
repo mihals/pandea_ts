@@ -52,6 +52,11 @@ export default class Demo extends Phaser.Scene
      */
     walkGroup:Phaser.GameObjects.Group
     /**
+     * Группа, содержащая прямоугольники(Rectangle), составляющие 
+     * инфицированную область
+     */
+    infectedGrp:Phaser.GameObjects.Group
+    /**
      * Если редактор вирусов и волкеров загрузился значение = true
      */
     isEditorInit:boolean = false
@@ -92,6 +97,7 @@ export default class Demo extends Phaser.Scene
         this.virGridArr = []
         this.walkGridArr = []
         this.contactGroupArr=[]
+        this.infectedGrp = new Phaser.GameObjects.Group(this)
         //this.testSet()
     }    
 
@@ -122,6 +128,8 @@ export default class Demo extends Phaser.Scene
         this.keys = this.input.keyboard.addKeys('Q, A');
         this.numVirCells = 0 
         this.numWalkCells =0 
+        //this.map = this.make.tilemap({key: "map"})
+        //const tiles = this.map.add
     }
 
     update(time: number, delta: number): void {
@@ -155,10 +163,13 @@ export default class Demo extends Phaser.Scene
     }
 
     onZoneClick(pointer: Phaser.Input.Pointer){
+        
         // если поле движется, то добавление невозможно
         if(this.keys.Q.isDown || this.keys.A.isDown) return
 
-        if (this.editorPnt.buttonState == "none") return;
+        if (this.editorPnt.buttonState == "none"){
+            this.markInfectedArea(pointer)
+        } 
 
         if (this.editorPnt.buttonState == "virOn") {
             // находим расстояние от нижней границы самой первой (и самой
@@ -373,6 +384,8 @@ export default class Demo extends Phaser.Scene
     /**
      * Удаляет волкера с номерами ячейки x и y из контактных групп,
      * из this.walkGroup волкер уже удалён
+     * @param x номер ячейки
+     * @param y номер ячейки
      */
     // при удалении волкера, входящего в какую-либо контактную группу,
     // сама группа может распасться на несколько контактных групп
@@ -473,18 +486,76 @@ export default class Demo extends Phaser.Scene
         }
     }
 
-    testSet(){
-        let set1:Phaser.Structs.Set<string>=new Phaser.Structs.Set(["1_1","1_2","1_3"])
-        let set2:Phaser.Structs.Set<string>=new Phaser.Structs.Set(["1_3","1_4","1_5"])
-        set2.delete("1_5")
-        let a=set2.contains("1_3")
-        console.log(a)
-        let resSet = set2.difference(set1)
-        console.log(resSet)
-        let uniSet = set1.union(set2)
-        console.log(uniSet)
-        uniSet=set1.intersect(set2)
-        console.log(uniSet)
+    /**
+     * Метод, закрашивающий или удаляющий инфицированную область
+     * @param pointer объект, содержащий координаты мыши
+     * @returns 
+     */
+    markInfectedArea(pointer: Phaser.Input.Pointer){
+        if (this.infectedGrp.children.size != 0) {
+            this.infectedGrp.clear(true,true)
+            return
+        }
+
+        let grid = this.virGridArr.filter(item => item.getBounds().
+            contains(pointer.x, pointer.y))[0]
+        let xCell = Math.floor((pointer.x - grid.getBounds().left) / this.cellSize)
+        let globalCellY = Math.floor((grid.getBounds().bottom - pointer.y) / this.cellSize) +
+            grid.getData("index") * this.gridCellHeight
+        let walkArr = this.walkGroup.getMatching("name", "W_" + xCell + "_" + globalCellY)
+        
+        if(walkArr.length ==0) return
+
+        let contactGroupInd: number
+        // находим в какой контактной группе находится волкер, по которому щёлкнули
+        if (walkArr.length != 0) {
+            this.contactGroupArr.forEach((item, index) => {
+                item.iterate((entry) => {
+                    if (entry.x == Number(walkArr[0].name.split("_")[1]) &&
+                        entry.y == Number(walkArr[0].name.split("_")[2])) {
+                        contactGroupInd = index
+                        return false
+                    }
+                    return true
+                })
+            })
+        }
+        // для волкеров из контактной группы формируем зараженную область -
+        // это восемь квадратов, окружающих каждый инфицированный волкер и
+        // квадрат с самим волкером, заносим в набор infectedArea строковыми
+        // значения номеров y и x значения, набор выбран для того, чтобы не
+        // заносились повторяющиеся значения
+        /**
+         * набор, содержащий инфицированную область для контактной группы
+         */
+        let infectedArea : Phaser.Structs.Set<string> = new Phaser.Structs.Set()
+        this.contactGroupArr[contactGroupInd].iterate((entry) => {
+            infectedArea.set(entry.x + "_" + (entry.y)).
+                set(entry.x + "_" + (entry.y-1)).
+                set((entry.x-1) + "_" + (entry.y-1)).
+                set((entry.x-1) + "_" + (entry.y)).
+                set((entry.x-1) + "_" + (entry.y+1)).
+                set((entry.x) + "_" + (entry.y+1)).
+                set((entry.x+1) + "_" + (entry.y+1)).
+                set((entry.x+1) + "_" + (entry.y)).
+                set((entry.x+1) + "_" + (entry.y-1))
+            return true
+        })
+
+        this.infectedGrp = new Phaser.GameObjects.Group(this)
+        infectedArea.iterate((item) => {
+            let paire = item.split("_")
+            this.infectedGrp.add(new Phaser.GameObjects.Rectangle(this,
+                this.virGridArr[0].x + 
+                Number(paire[0])*this.cellSize, this.game.canvas.height -
+                (Number(paire[1]) + 1)*this.cellSize, this.cellSize, this.cellSize,
+                0xff0000,0.3).setOrigin(0,0), true)
+            return true
+        })
+        
+
+        console.log(infectedArea.size)
+        
     }
 
     keyQDown(pointer: Phaser.Input.Pointer){
